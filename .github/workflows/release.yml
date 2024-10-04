@@ -1,0 +1,68 @@
+name: Generate release
+on: 
+  push:
+    tags:
+      - '*'
+
+
+jobs:
+ build_windows:
+  strategy:
+    matrix:
+      os:
+        - {runner: windows-2022, kind: windows, version: 11, rid: win-x64}
+        - {runner: windows-2019, kind: windows, version: 10, rid: win-x64}
+        - {runner: macos-latest, kind: macos, version: latest, rid: osx-arm64}
+
+  name: Build ${{ matrix.os.kind }} ${{ matrix.os.version }}
+  runs-on: ${{ matrix.os.runner }}
+  steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    - run: dotnet publish --self-contained -r ${{ matrix.os.rid }} --output published
+      working-directory: ./ReplayRenamer
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: replay_renamer_${{ matrix.os.kind }}_${{ matrix.os.version }}_${{ matrix.os.rid }}
+        path: ./ReplayRenamer/published
+
+ create_release:
+    needs: [build_windows]
+    name: Publish packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3.0.1
+        with:
+          path: .
+
+      - name: Create Windows 10 archive
+        uses: thedoctor0/zip-release@main
+        with:
+          type: 'zip'
+          filename: '../windows-10-x64.zip'
+          directory: 'replay_renamer_windows_10_win-x64/'
+
+      - name: Create Windows 11 archive
+        uses: thedoctor0/zip-release@main
+        with:
+          type: 'zip'
+          filename: '../windows-11-x64.zip'
+          directory: 'replay_renamer_windows_11_win-x64/'
+
+      - name: Create OSX archive
+        uses: thedoctor0/zip-release@main
+        with:
+          type: 'zip'
+          filename: '../osx-latest.zip'
+          directory: 'replay_renamer_macos_latest_osx-arm64/'
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "*.zip,*.tar.gz"
