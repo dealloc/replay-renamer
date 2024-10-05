@@ -29,11 +29,13 @@ public class ReplayRenamerService : BackgroundService
     }
 
     /// <inheritdoc />
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var inputs = Environment
             .GetCommandLineArgs()
             .Skip(1);
+        
+        _logger.LogDebug("Starting renamer with following inputs: {Inputs}", inputs);
 
         foreach (var (path, replay) in GetReplays(inputs))
         {
@@ -44,14 +46,17 @@ public class ReplayRenamerService : BackgroundService
                 var extension = Path.GetExtension(path);
 
                 var target = GetFileName(replay, original);
-                _logger.LogDebug("Renaming {Path} to {Target}", original, target);
+                var targetPath = $"{Path.Combine(folder!, target)}{extension}";
+                _logger.LogInformation("Renaming {Path} to {Target}", original, target);
+                _logger.LogDebug("MOVE {Path} {Target}", path, targetPath);
                 
-                File.Move(path, $"{Path.Combine(folder!, target)}{extension}");
+                File.Move(path, targetPath);
             }
         }
         
+        _logger.LogInformation("Renaming finished, shutting down");
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         _lifetime.StopApplication();
-        return Task.CompletedTask;
     }
 
     private IEnumerable<(string Path, CGameCtnReplayRecord? Replay)> GetReplays(IEnumerable<string> inputs)
@@ -95,12 +100,14 @@ public class ReplayRenamerService : BackgroundService
     {
         var element = XElement.Parse(replay.Xml!);
         var mapName = element.Element("map")?.Attribute("name")?.Value;
-        
-        return _fileNameTemplate
+
+        var name = _fileNameTemplate
             .Replace("{Time}", replay.Time?.ToString())
             .Replace("{Player}", replay.PlayerNickname)
             .Replace("{Login}", replay.PlayerLogin)
             .Replace("{Track}", mapName)
             .Replace("{Original}", filename);
+
+        return string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
     }
 }
